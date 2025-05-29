@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/*.log
+*.log
+
+# Data and temporary files
+data/processed_hashes.json
+data/cache/
+temp/
+tmp/
+
+# Secrets (keep API keys out of repo)
+.env
+config/secrets.yml
+config/api_keys.yml
+
+# Test files
+test_*.py
+*_test.py
+tests/temp/
+
+# DMM extraction files (temporary)
+dmm_content_*.html
+decoded_dmm_*.txt
+extract_*.py
+decode_*.py

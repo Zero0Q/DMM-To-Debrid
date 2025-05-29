@@ -1,0 +1,89 @@
+name: DMM to Real-Debrid Auto-Add
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+    inputs:
+      max_items:
+        description: 'Maximum items to process this run'
+        required: false
+        default: '30'
+        type: string
+      force_sync:
+        description: 'Force sync even if recently processed'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  auto-add-content:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Create necessary directories
+        run: |
+          mkdir -p logs data
+    
+      - name: Run DMM to Real-Debrid auto-add
+        env:
+          # Real-Debrid API key (required)
+          REAL_DEBRID_API_KEY: ${{ secrets.REAL_DEBRID_API_KEY }}
+          
+          # Optional notification settings
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          
+          # Optional overrides from manual trigger
+          MAX_ITEMS_OVERRIDE: ${{ github.event.inputs.max_items }}
+          FORCE_SYNC: ${{ github.event.inputs.force_sync }}
+          
+        run: |
+          cd src
+          python main.py
+    
+      - name: Upload logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: dmm-auto-add-logs-${{ github.run_number }}
+          path: |
+            logs/
+            data/processed_hashes.json
+          retention-days: 30
+    
+      - name: Commit updated data
+        if: success()
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add data/processed_hashes.json
+          git diff --staged --quiet || git commit -m "Update processed hashes data [skip ci]"
+          git push
+        continue-on-error: true
+    
+      - name: Send failure notification
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+              -d chat_id="$TELEGRAM_CHAT_ID" \
+              -d text="❌ DMM Auto-Add failed!%0ACheck the GitHub Actions logs for details.%0A%0AWorkflow: ${{ github.workflow }}%0ARun: ${{ github.run_number }}"
+          fi

@@ -1,0 +1,195 @@
+# Trakt to Real-Debrid Automation Settings
+# DebridAuto Configuration
+# Hash List Auto-Add Settings
+
+# Real-Debrid API Configuration
+real_debrid:
+  api_key: ""  # DO NOT PUT YOUR API KEY HERE! Set via GitHub Secrets as REAL_DEBRID_API_KEY
+
+# DMM Configuration
+dmm:
+  base_url: "https://hashlists.debridmediamanager.com"
+  timeout: 30
+
+# Content Preferences - Uncomment desired qualities
+quality_preferences:
+  - "2160p"  # 4K - highest priority
+  - "1080p"  # Full HD
+  - "720p"   # HD (only if above not available)
+  # - "480p"   # SD quality
+  # - "360p"   # Low quality
+
+# Codec Preferences (uncomment desired codecs, leave empty to include all)
+codec_preferences:
+  - "x265"      # HEVC/H.265 codec (smaller file sizes, better compression)
+  - "hevc"      # Alternative name for H.265
+  - "h265"      # Alternative name for H.265
+  - "x264"      # AVC/H.264 codec (widely compatible)
+  - "h264"      # Alternative name for H.264
+  - "avc"       # Alternative name for H.264
+  - "10bit"     # 10-bit color depth
+  - "10-bit"    # Alternative format for 10-bit
+  - "av1"       # AV1 codec (newest, most efficient)
+  # Leave empty to include all codecs, or uncomment specific codecs above
+
+# HDR Preferences (uncomment desired HDR formats, leave empty to include all)
+hdr_preferences:
+  # - "hdr"           # Basic HDR content
+  # - "hdr10"         # HDR10 standard
+  # - "hdr10+"        # HDR10+ enhanced
+  # - "dv"            # Dolby Vision
+  # - "dolby"         # Dolby (alternative format)
+  # - "vision"        # Vision (alternative format)
+  # - "dolby-vision"  # Dolby Vision (alternative format)
+  # - "hlg"           # Hybrid Log-Gamma HDR
+  - "sdr"           # Standard Dynamic Range (non-HDR)
+  # Leave empty to include all HDR formats, or uncomment specific formats above
+
+# Content Types - Set to true/false as needed
+content_types:
+  movies: true
+  tv_shows: true
+  documentaries: true  # Set to true if you want documentaries
+
+# Year Filters
+# min_year: 2020  # Only content from 2020 onwards
+# max_year: 2025  # Current year
+
+# Language Preferences - Uncomment desired languages
+languages:
+  - "english"
+  - "en"
+  # - "spanish"
+  # - "french"
+  # - "german"
+  # - "italian"
+  # - "portuguese"
+  # - "russian"
+  # - "japanese"
+  # - "korean"
+  # - "chinese"
+
+# Quality Filters - Exclude low quality releases (uncomment to exclude)
+exclude_keywords:
+  - "cam"
+  - "ts" 
+  - "screener"
+  - "workprint"
+  - "telecine"
+  - "r5"
+  - "dvdscr"
+  - "hdcam"
+  - "hdts"
+  - "korean"
+  - "chinese"
+  - "spanish"
+  - "french"
+  - "german"
+  - "italian"
+  - "dubbed"
+  - "subbed"
+  - "hardcoded"
+  - "hc"
+  - "ad"
+  - "ads"
+
+# Include only good sources (uncomment desired sources, leave empty to include all)
+include_keywords:
+  - "bluray"
+  - "web-dl"
+  - "webrip"
+  - "hdtv"
+  - "brrip"
+  - "bdrip"
+  # - "dvdrip"
+  # - "remux"
+  # - "uhd"
+  # - "hdr"
+  # - "dv"
+  # - "dolby"
+  # - "atmos"
+
+# Size Limits (in GB)
+min_size_gb: 0.8   # Minimum file size
+max_size_gb: 50.0  # Maximum file size (adjust based on your storage)
+
+# Processing Limits
+max_items_per_run: 30      # Don't add too many at once
+hash_list_limit: 15        # Number of hash lists to process per run
+check_interval: 6          # Hours between runs
+
+# Genre Preferences (optional - filter by genre keywords in filename)
+preferred_genres:
+  # - "action"
+  # - "adventure"
+  # - "animation"
+  # - "biography"
+  # - "comedy"
+  # - "crime"
+  # - "documentary"
+  # - "drama"
+  # - "family"
+  # - "fantasy"
+  # - "history"
+  # - "horror"
+  # - "music"
+  # - "musical"
+  # - "mystery"
+  # - "romance"
+  # - "sci-fi"
+  # - "science-fiction"
+  # - "sport"
+  # - "thriller"
+  # - "war"
+  # - "western"
+  # Leave empty to include all genres, or uncomment specific genres above
+
+# Exclude certain genres/types (uncomment to exclude)
+exclude_genres:
+  # - "anime"
+  # - "kids"
+  # - "children"
+  # - "documentary"
+  # - "adult"
+  # - "xxx"
+  # - "porn"
+  # - "reality"
+  # - "talk-show"
+  # - "game-show"
+  # - "news"
+  # Add any genres you want to exclude
+
+# Notifications (add your webhook URLs/tokens to enable)
+notifications:
+  discord:
+    webhook_url: ""  # Optional Discord webhook
+  
+  telegram:
+    bot_token: ""    # Optional Telegram bot token
+    chat_id: ""      # Optional Telegram chat ID
+  
+  pushover:
+    user_key: ""     # Optional Pushover user key
+    api_token: ""    # Optional Pushover API token
+  
+  # slack:
+  #   webhook_url: ""  # Optional Slack webhook
+  
+  # email:
+  #   smtp_server: ""  # SMTP server
+  #   smtp_port: 587   # SMTP port
+  #   username: ""     # Email username
+  #   password: ""     # Email password
+  #   from_email: ""   # From email address
+  #   to_email: ""     # To email address
+
+# Advanced Settings (adjust with caution)
+advanced:
+  retry_attempts: 3      # Number of retry attempts for failed requests
+  retry_delay: 5         # Delay between retries in seconds
+  rate_limit_delay: 2    # Delay between API calls in seconds
+  concurrent_downloads: 5 # Number of concurrent downloads
+  # timeout: 30          # Request timeout in seconds
+  # max_file_size: 100   # Maximum file size in GB
+  # min_seeders: 1       # Minimum number of seeders
+  # max_age_days: 365    # Maximum age of content in days
