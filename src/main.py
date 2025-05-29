@@ -87,11 +87,9 @@ class HashListAutoAdd:
             'max_size_gb': 50.0,  # Maximum file size
             
             # Processing limits
-            'max_items_per_run': 50,  # Don't add too many at once
-            'hash_list_limit': 20,    # Number of hash lists to process per run
-            
-            # Scheduling
-            'check_interval': 6,  # hours between runs
+            'max_items_per_run': 30,      # Don't add too many at once
+            'hash_list_limit': 15,        # Number of hash lists to process per run
+            'check_interval': 6,          # Hours between runs
         }
         
         # Merge with defaults
@@ -149,6 +147,214 @@ class HashListAutoAdd:
             return []
     
     async def run_automation(self):
+        """Main automation loop that processes through all available DMM hash lists"""
+        logger.info("Starting DebridAuto automation with DMM hash list processing")
+        
+        # Always ensure the processed hashes file exists, even if empty
+        self.save_processed_hashes()
+        
+        try:
+            # Check Real-Debrid service status before proceeding
+            logger.info("Checking Real-Debrid service status...")
+            service_status = await self.real_debrid.check_service_status()
+            
+            if service_status['status'] != 'healthy':
+                logger.warning(f"Real-Debrid service status: {service_status['status']}")
+                
+                if service_status['status'] == 'service_unavailable':
+                    logger.info("Service unavailable (503 error), waiting for recovery...")
+                    if await self.real_debrid.wait_for_service_recovery(max_wait_minutes=15):
+                        logger.info("Service recovered, continuing with automation...")
+                    else:
+                        logger.error("Service did not recover, aborting this run")
+                        await self.notifier.send_notification(
+                            "⚠️ DebridAuto Run Skipped",
+                            f"Real-Debrid service is experiencing 503 errors and did not recover within 15 minutes.\nWill retry in next scheduled run."
+                        )
+                        self.save_processed_hashes()
+                        return
+                elif service_status['status'] == 'auth_error':
+                    logger.error("Authentication error - check your API key")
+                    await self.notifier.send_notification(
+                        "❌ DebridAuto Authentication Error",
+                        "Invalid API key or authentication failed. Please check your Real-Debrid API key."
+                    )
+                    self.save_processed_hashes()
+                    return
+                elif service_status['status'] == 'rate_limited':
+                    logger.warning("Rate limited, waiting 5 minutes before proceeding...")
+                    await asyncio.sleep(300)  # Wait 5 minutes
+                else:
+                    logger.warning(f"Service status {service_status['status']}, proceeding with caution...")
+            else:
+                logger.info("Real-Debrid service is healthy")
+            
+            # Get all available DMM hash lists
+            logger.info("Fetching available DMM hash lists...")
+            available_hash_lists = await self.dmm.get_available_hash_lists()
+            
+            if not available_hash_lists:
+                logger.warning("No DMM hash lists found, falling back to static hash file")
+                # Fallback to static hash file if DMM lists not available
+                real_hashes = self.load_real_dmm_hashes()
+                if real_hashes:
+                    await self.process_hash_batch(real_hashes, "static_file")
+                else:
+                    logger.error("No hashes available from any source")
+                self.save_processed_hashes()
+                return
+            
+            logger.info(f"Found {len(available_hash_lists)} DMM hash lists")
+            
+            # Limit the number of hash lists to process per run
+            hash_list_limit = self.config.get('hash_list_limit', 20)
+            if len(available_hash_lists) > hash_list_limit:
+                available_hash_lists = available_hash_lists[:hash_list_limit]
+                logger.info(f"Limited to {hash_list_limit} hash lists for this run")
+            
+            # Check for existing torrents in Real-Debrid once
+            existing_torrents = await self.check_existing_torrents()
+            
+            # Process each hash list
+            total_added = 0
+            total_failed = 0
+            total_skipped = 0
+            all_results = {'added': [], 'failed': [], 'skipped': []}
+            
+            for i, hash_list_filename in enumerate(available_hash_lists, 1):
+                logger.info(f"Processing hash list {i}/{len(available_hash_lists)}: {hash_list_filename}")
+                
+                try:
+                    # Load hashes from this specific hash list
+                    hash_list_hashes = await self.dmm.load_hash_list(hash_list_filename)
+                    
+                    if not hash_list_hashes:
+                        logger.warning(f"No hashes found in {hash_list_filename}, skipping")
+                        continue
+                    
+                    logger.info(f"Loaded {len(hash_list_hashes)} hashes from {hash_list_filename}")
+                    
+                    # Process this batch of hashes
+                    batch_results = await self.process_hash_batch(
+                        hash_list_hashes, 
+                        hash_list_filename, 
+                        existing_torrents
+                    )
+                    
+                    # Accumulate results
+                    total_added += len(batch_results['added'])
+                    total_failed += len(batch_results['failed'])
+                    total_skipped += len(batch_results['skipped'])
+                    
+                    all_results['added'].extend(batch_results['added'])
+                    all_results['failed'].extend(batch_results['failed'])
+                    all_results['skipped'].extend(batch_results['skipped'])
+                    
+                    logger.info(f"Hash list {hash_list_filename} results: "
+                              f"Added: {len(batch_results['added'])}, "
+                              f"Failed: {len(batch_results['failed'])}, "
+                              f"Skipped: {len(batch_results['skipped'])}")
+                    
+                    # Check if we've reached the max items limit
+                    max_items = self.config.get('max_items_per_run', 50)
+                    if total_added >= max_items:
+                        logger.info(f"Reached maximum items limit ({max_items}), stopping processing")
+                        break
+                    
+                    # Add delay between hash lists to avoid overwhelming the API
+                    if i < len(available_hash_lists):
+                        logger.info("Waiting 30 seconds before processing next hash list...")
+                        await asyncio.sleep(30)
+                        
+                except Exception as e:
+                    logger.error(f"Error processing hash list {hash_list_filename}: {e}")
+                    continue
+            
+            logger.info(f"Total results across all hash lists: "
+                       f"Added: {total_added}, Failed: {total_failed}, Skipped: {total_skipped}")
+            
+            # Send summary notification
+            if total_added > 0 or total_failed > 0:
+                await self.send_notification(all_results)
+            
+            # Save processed hashes
+            self.save_processed_hashes()
+            
+        except Exception as e:
+            logger.error(f"Error in automation: {str(e)}")
+            self.save_processed_hashes()
+            try:
+                await self.notifier.send_notification(
+                    "❌ DebridAuto Error",
+                    f"Automation failed with error: {str(e)}"
+                )
+            except Exception as notif_error:
+                logger.error(f"Failed to send error notification: {notif_error}")
+            raise
+        finally:
+            # Ensure sessions are closed
+            try:
+                if self.dmm:
+                    await self.dmm.close()
+                if self.real_debrid:
+                    await self.real_debrid.close()
+            except Exception as e:
+                logger.debug(f"Error closing sessions: {e}")
+
+    async def process_hash_batch(self, hashes: List[str], source_name: str, existing_torrents: Set[str] = None) -> Dict:
+        """Process a batch of hashes from a specific source"""
+        if existing_torrents is None:
+            existing_torrents = await self.check_existing_torrents()
+        
+        logger.info(f"Processing {len(hashes)} hashes from {source_name}")
+        
+        # Parse content from hashes
+        content_items = await self.parse_content_from_hashes(hashes)
+        logger.info(f"Parsed {len(content_items)} content items from {source_name}")
+        
+        # Filter content based on preferences  
+        filtered_content = self.filter_content(content_items)
+        logger.info(f"After filtering: {len(filtered_content)} items from {source_name}")
+        
+        # Remove already processed hashes
+        new_content = [item for item in filtered_content 
+                      if item['hash'] not in self.processed_hashes]
+        logger.info(f"Found {len(new_content)} new items to process from {source_name}")
+        
+        if not new_content:
+            logger.info(f"No new content to process from {source_name}")
+            return {'added': [], 'failed': [], 'skipped': []}
+        
+        # Remove content that already exists in Real-Debrid
+        unique_content = [item for item in new_content 
+                         if item['hash'].lower() not in existing_torrents]
+        logger.info(f"After removing existing torrents: {len(unique_content)} items remain from {source_name}")
+        
+        # Remove duplicates within this batch
+        unique_content = await self.check_content_similarity(unique_content)
+        logger.info(f"After deduplication: {len(unique_content)} unique items from {source_name}")
+        
+        # Limit items for this batch (distribute the limit across hash lists)
+        max_items_total = self.config.get('max_items_per_run', 50)
+        max_items_per_batch = max(5, max_items_total // self.config.get('hash_list_limit', 20))
+        
+        if len(unique_content) > max_items_per_batch:
+            unique_content = unique_content[:max_items_per_batch]
+            logger.info(f"Limited to {max_items_per_batch} items for this batch from {source_name}")
+        
+        # Add to Real-Debrid
+        if unique_content:
+            results = await self.add_content_to_debrid(unique_content, existing_torrents)
+            logger.info(f"Batch {source_name} results: "
+                       f"Added: {len(results['added'])}, "
+                       f"Failed: {len(results['failed'])}, "
+                       f"Skipped: {len(results['skipped'])}")
+            return results
+        else:
+            logger.info(f"No unique content to add from {source_name}")
+            return {'added': [], 'failed': [], 'skipped': []}
+    
+    async def run_automation_old(self):
         """Main automation loop with real DMM hashes"""
         logger.info("Starting DebridAuto automation with real DMM hashes")
         
