@@ -1,4 +1,5 @@
 name: DMM to Real-Debrid Auto-Add
+
 on:
   schedule:
     # Run every 6 hours
@@ -56,15 +57,16 @@ jobs:
           cd src
           python main.py
     
-      - name: Upload logs as artifact
+      - name: Upload processing logs and data
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dmm-auto-add-logs-${{ github.run_number }}
+          name: processing-results-${{ github.run_number }}
           path: |
             logs/
             data/processed_hashes.json
           retention-days: 30
+          if-no-files-found: warn
     
       - name: Commit updated data
         if: success()
