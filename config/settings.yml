@@ -49,7 +49,7 @@ hdr_preferences:
 content_types:
   movies: true
   tv_shows: true
-  documentaries: true  # Set to true if you want documentaries
+  documentaries: false  # Set to true if you want documentaries
 
 # Year Filters
 # min_year: 2020  # Only content from 2020 onwards
@@ -57,8 +57,8 @@ content_types:
 
 # Language Preferences - Uncomment desired languages
 languages:
-  - "english"
-  - "en"
+  # - "english"
+  # - "en"
   # - "spanish"
   # - "french"
   # - "german"
@@ -114,8 +114,8 @@ min_size_gb: 0.8   # Minimum file size
 max_size_gb: 50.0  # Maximum file size (adjust based on your storage)
 
 # Processing Limits
-max_items_per_run: 30      # Don't add too many at once
-hash_list_limit: 15        # Number of hash lists to process per run
+max_items_per_run: 300      # Don't add too many at once
+hash_list_limit: 150        # Number of hash lists to process per run
 check_interval: 6          # Hours between runs
 
 # Genre Preferences (optional - filter by genre keywords in filename)
@@ -146,17 +146,17 @@ preferred_genres:
 
 # Exclude certain genres/types (uncomment to exclude)
 exclude_genres:
-  # - "anime"
-  # - "kids"
-  # - "children"
+  - "anime"
+  - "kids"
+  - "children"
   # - "documentary"
-  # - "adult"
-  # - "xxx"
-  # - "porn"
-  # - "reality"
-  # - "talk-show"
-  # - "game-show"
-  # - "news"
+  - "adult"
+  - "xxx"
+  - "porn"
+  - "reality"
+  - "talk-show"
+  - "game-show"
+  - "news"
   # Add any genres you want to exclude
 
 # Notifications (add your webhook URLs/tokens to enable)
