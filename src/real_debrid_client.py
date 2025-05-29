@@ -327,3 +327,74 @@ class RealDebridClient:
         
         logger.warning(f"Service did not recover within {max_wait_minutes} minutes")
         return False
+    
+    async def check_torrent_content(self, hash_str: str) -> Dict:
+        """
+        Check the content of a torrent by its hash without adding it to Real-Debrid
+        This uses the instant availability endpoint to get info about cached torrents
+        """
+        try:
+            # Format the hash as a magnet link for the request
+            torrent_hash = hash_str.lower()
+            
+            # Use the availability endpoint which doesn't add the torrent
+            endpoint = f'torrents/instantAvailability/{torrent_hash}'
+            response = await self._make_request('GET', endpoint)
+            
+            # If no response or empty, torrent might not be cached
+            if not response or torrent_hash not in response:
+                logger.debug(f"Torrent {torrent_hash[:8]} not available in Real-Debrid cache")
+                return {
+                    'hash': torrent_hash,
+                    'cached': False,
+                    'files': []
+                }
+            
+            # Get cached files info
+            cached_data = response[torrent_hash]
+            if not cached_data or not isinstance(cached_data, list) or len(cached_data) == 0:
+                return {
+                    'hash': torrent_hash,
+                    'cached': False,
+                    'files': []
+                }
+            
+            # First item in the list contains cached files
+            cached_files = []
+            
+            # Extract file information from response
+            # Format varies by source, so check different possible structures
+            for host_data in cached_data:
+                if not isinstance(host_data, dict):
+                    continue
+                    
+                # Try different keys where files might be stored
+                for key in host_data:
+                    files_data = host_data[key]
+                    
+                    if isinstance(files_data, list):
+                        for file in files_data:
+                            if isinstance(file, dict):
+                                filename = file.get('filename', '')
+                                filesize = int(file.get('filesize', 0))
+                                
+                                cached_files.append({
+                                    'filename': filename,
+                                    'size': filesize,
+                                    'id': len(cached_files) + 1  # Generate sequential ID
+                                })
+            
+            return {
+                'hash': torrent_hash,
+                'cached': len(cached_files) > 0,
+                'files': cached_files
+            }
+                
+        except Exception as e:
+            logger.error(f"Error checking torrent content for hash {hash_str[:8]}: {str(e)}")
+            return {
+                'hash': hash_str,
+                'cached': False,
+                'error': str(e),
+                'files': []
+            }

@@ -328,279 +328,130 @@ class HashListAutoAdd:
         logger.info(f"Deduplication complete: {len(content_items)} -> {len(unique_content)} unique items")
         return unique_content
 
-    def parse_content_from_hashes(self, hashes: List[str]) -> List[Dict]:
-        """Parse content information from a list of real hashes"""
-        content_items = []
+    async def parse_content_from_hashes(self, hashes):
+        """
+        Parse content from torrent hashes using Real-Debrid API
+        Returns a list of content items with metadata
+        """
+        content = []
         
-        # Load settings
-        quality_preferences = self.config.get('quality_preferences', [])
-        codec_preferences = self.config.get('codec_preferences', [])
-        languages = self.config.get('languages', [])
-        content_types = self.config.get('content_types', {})
+        self.logger.info(f"Parsing {len(hashes)} content items from real hashes")
         
-        # Import random for generating realistic-looking metadata
-        import random
-        
-        for hash_str in hashes:
+        for torrent_hash in hashes:
             try:
-                # Generate semi-random metadata for cached content
-                file_size = random.uniform(0.5, 8.0) * 1024 * 1024 * 1024  # 0.5-8GB
+                # Check torrent content before adding to get real file information
+                magnet_link = f"magnet:?xt=urn:btih:{torrent_hash}"
+                torrent_info = await self.real_debrid.check_torrent_content(torrent_hash)
                 
-                # Randomly pick content type based on enabled types
-                available_types = []
-                if content_types.get('movies', True):
-                    available_types.append('movie')
-                if content_types.get('tv_shows', True):
-                    available_types.append('tv_show')
-                if content_types.get('documentaries', True):
-                    available_types.append('documentary')
+                if not torrent_info or not torrent_info.get('cached', False):
+                    self.logger.warning(f"Could not get content info for hash {torrent_hash}")
+                    continue
                 
-                # Default to movie if nothing is enabled
-                if not available_types:
-                    available_types = ['movie']
-                    
-                content_type = random.choice(available_types)
+                # Extract filenames for content type detection
+                files = torrent_info.get("files", [])
+                filenames = [file.get("filename", "unknown") for file in files]
                 
-                # Generate random year between 2000 and current
-                import datetime
-                current_year = datetime.datetime.now().year
-                year = random.randint(2000, current_year)
+                if not filenames:
+                    self.logger.warning(f"No filenames found for hash {torrent_hash}")
+                    continue
                 
-                # Generate a more descriptive filename with info that can be filtered
-                quality = random.choice(quality_preferences) if quality_preferences else random.choice(['1080p', '720p', '2160p'])
-                codec = random.choice(codec_preferences) if codec_preferences else random.choice(['x264', 'x265'])
-                language = random.choice(languages) if languages else 'english'
+                # Determine content type based on actual files
+                content_type = self.determine_content_type(filenames)
                 
-                # Randomly decide if this is a foreign language release (10% chance)
-                is_foreign = random.random() < 0.1
+                # Calculate total size from files
+                total_size = sum(file.get("size", 0) for file in files)
                 
-                # Create filename with filtering data
-                filename = f"cached_content_{hash_str[:8]}"
-                
-                # For 20% of content, add more descriptive title to test filtering
-                if random.random() < 0.2:
-                    foreign_tags = ["korean", "chinese", "spanish", "dubbed"] if is_foreign else []
-                    cam_tags = ["cam", "ts", "screener"] if random.random() < 0.1 else []
-                    source_tags = ["web-dl", "bluray", "hdtv", "brrip"] if not cam_tags else []
-                    
-                    # Add some tags to the filename for filtering
-                    tags = []
-                    if foreign_tags:
-                        tags.append(random.choice(foreign_tags))
-                    if cam_tags:
-                        tags.append(random.choice(cam_tags))
-                    if source_tags:
-                        tags.append(random.choice(source_tags))
-                    
-                    # Combine into filename with some filtering hooks
-                    filename = f"{filename}.{'.'.join(tags)}.{quality}.{codec}.{language}.mkv"
-                else:
-                    # Simple filename for most content
-                    filename = f"{filename}.{quality}.{codec}.{language}.mkv"
-                
-                # Create a content item with proper metadata for filtering
-                content_item = {
-                    'hash': hash_str,
-                    'filename': filename.lower(),
-                    'size': file_size,
-                    'type': content_type,
-                    'title': f"Cached Content {hash_str[:8]}",
-                    'quality': quality,
-                    'codec': codec,
-                    'year': year,
-                    'features': {}
+                item = {
+                    "hash": torrent_hash,
+                    "title": f"Cached Content {torrent_hash[:8]}",
+                    "type": content_type,
+                    "size": total_size,
+                    "files": files,
+                    "filenames": filenames,
+                    "file_count": len(filenames)
                 }
-                content_items.append(content_item)
                 
+                content.append(item)
             except Exception as e:
-                logger.debug(f"Failed to process hash {hash_str}: {str(e)}")
-                continue
+                self.logger.error(f"Error parsing content for hash {torrent_hash}: {e}")
         
-        return content_items
+        self.logger.info(f"Parsed {len(content)} content items from real hashes")
+        return content
+    
+    def determine_content_type(self, filenames):
+        """
+        Analyze filenames to determine the type of content (movie, tv, adult, etc.)
+        Returns: str - content type ('movie', 'tv', 'adult', 'other')
+        """
+        if not filenames:
+            return "unknown"
+            
+        # Common adult content indicators in filenames
+        adult_keywords = [
+            'xxx', 'porn', 'adult', 'sex', 'anal', 'brazzers', 'bangbros', 'naughty', 
+            'playboy', 'penthouse', 'hustler', 'x-art', 'mofos', 'blacked', 'reality kings',
+            'pornhub', 'xvideos', 'milf', 'mature', 'pussy', 'cock', 'dick', 'nude', 'hardcore'
+        ]
+        
+        # Movie indicators
+        movie_keywords = [
+            '1080p', '720p', '2160p', 'bdrip', 'brrip', 'bluray', 'webrip', 'dvdrip', 
+            'x264', 'x265', 'h264', 'h265', 'hevc', 'remux', 'hdr', 'dts', 'aac', 'atmos'
+        ]
+        
+        # TV show indicators
+        tv_keywords = [
+            's01', 's02', 's03', 's04', 's05', 'e01', 'e02', 'e03', 'season', 'episode',
+            'complete.series', 'complete.season', 'tv.pack'
+        ]
+        
+        # Convert filenames to lowercase for case-insensitive matching
+        filenames_lower = [filename.lower() for filename in filenames]
+        joined_names = ' '.join(filenames_lower)
+        
+        # Check for adult content first (most important to filter)
+        for keyword in adult_keywords:
+            if any(keyword in filename for filename in filenames_lower):
+                return "adult"
+        
+        # Check for TV shows
+        for keyword in tv_keywords:
+            if any(keyword in filename for filename in filenames_lower):
+                return "tv"
+        
+        # Check for movies
+        for keyword in movie_keywords:
+            if any(keyword in filename for filename in filenames_lower):
+                return "movie"
+        
+        # Default to other if no specific type detected
+        return "other"
 
-    def filter_content(self, content_items: List[Dict]) -> List[Dict]:
-        """Filter content based on user preferences"""
-        filtered = []
+    def _extract_quality(self, filenames: List[str]) -> str:
+        """Extract quality information from filenames"""
+        joined_names = ' '.join(filenames).lower()
         
-        logger.info(f"Starting filter with {len(content_items)} items")
+        # Quality indicators in order of precedence
+        quality_indicators = {
+            '8k': '8K',
+            '4k': '4K',
+            '2160p': '4K',
+            '1080p': 'FHD',
+            '720p': 'HD',
+            'bluray': 'BluRay',
+            'bdrip': 'BluRay',
+            'hdr': 'HDR',
+            'webrip': 'WebRip',
+            'web-dl': 'WEB-DL',
+            'web.dl': 'WEB-DL',
+            'dvdrip': 'DVDRip'
+        }
         
-        for i, item in enumerate(content_items):
-            try:
-                title = item.get('title', '')
-                filename = item.get('filename', '').lower()
-                hash_str = item.get('hash', '').lower()
+        for indicator, quality in quality_indicators.items():
+            if indicator in joined_names:
+                return quality
                 
-                # Skip if already processed
-                if hash_str in self.processed_hashes:
-                    logger.debug(f"Skipping {title} - already processed")
-                    continue
-                
-                # Check exclude keywords (always apply these filters)
-                exclude_keywords = self.config.get('exclude_keywords', [])
-                exclude_found = False
-                for keyword in exclude_keywords:
-                    if keyword.lower() in filename:
-                        logger.debug(f"Skipping {title} - contains excluded keyword: {keyword}")
-                        exclude_found = True
-                        break
-                if exclude_found:
-                    continue
-                
-                # Check include keywords (if specified)
-                include_keywords = self.config.get('include_keywords', [])
-                if include_keywords:
-                    include_found = False
-                    for keyword in include_keywords:
-                        if keyword.lower() in filename:
-                            include_found = True
-                            break
-                    if not include_found:
-                        logger.debug(f"Skipping {title} - doesn't contain any required keywords")
-                        continue
-                
-                # Check quality preferences (apply for all content)
-                quality_preferences = self.config.get('quality_preferences', [])
-                quality = item.get('quality', '').lower()
-                if quality_preferences:
-                    if quality and quality not in [q.lower() for q in quality_preferences]:
-                        logger.debug(f"Skipping {title} - quality {quality} not in preferences {quality_preferences}")
-                        continue
-                    # Also check filename as fallback
-                    quality_found = any(q.lower() in filename for q in quality_preferences)
-                    if not quality_found and not quality:
-                        logger.debug(f"Skipping {title} - no preferred quality found in filename")
-                        continue
-                
-                # Check codec preferences (apply for all content)
-                codec_preferences = self.config.get('codec_preferences', [])
-                codec = item.get('codec', '').lower()
-                if codec_preferences:
-                    if codec and codec not in [c.lower() for c in codec_preferences]:
-                        logger.debug(f"Skipping {title} - codec {codec} not in preferences {codec_preferences}")
-                        continue
-                    # Also check filename as fallback
-                    codec_found = any(c.lower() in filename for c in codec_preferences) 
-                    if not codec_found and not codec:
-                        logger.debug(f"Skipping {title} - no preferred codec found in filename")
-                        continue
-                
-                # Check HDR preferences
-                hdr_preferences = self.config.get('hdr_preferences', [])
-                if hdr_preferences:
-                    # Check if content matches HDR preferences
-                    hdr_found = False
-                    for hdr_format in hdr_preferences:
-                        if hdr_format.lower() in filename:
-                            hdr_found = True
-                            break
-                    
-                    # Special handling for "sdr" preference - exclude HDR content
-                    if 'sdr' in [h.lower() for h in hdr_preferences]:
-                        hdr_indicators = ['hdr', 'hdr10', 'dolby', 'vision', 'dv', 'hlg']
-                        has_hdr = any(indicator in filename for indicator in hdr_indicators)
-                        if has_hdr:
-                            logger.debug(f"Skipping {title} - contains HDR but SDR preferred")
-                            continue
-                    elif not hdr_found:
-                        # If specific HDR formats are required but not found, skip
-                        logger.debug(f"Skipping {title} - HDR format not in preferences")
-                        continue
-                
-                # Check language preferences
-                languages = self.config.get('languages', [])
-                if languages:
-                    # Check if content is in preferred language
-                    lang_found = False
-                    for lang in languages:
-                        if lang.lower() in filename:
-                            lang_found = True
-                            break
-                    
-                    # Specifically check for excluded languages in exclude_keywords
-                    foreign_indicators = [kw for kw in self.config.get('exclude_keywords', []) 
-                                         if kw.lower() in ['korean', 'chinese', 'spanish', 'french', 
-                                                         'german', 'italian', 'dubbed']]
-                    has_foreign = any(indicator in filename for indicator in foreign_indicators)
-                    
-                    if has_foreign:
-                        logger.debug(f"Skipping {title} - foreign language detected")
-                        continue
-                    
-                    if not lang_found and languages != []:
-                        logger.debug(f"Skipping {title} - preferred language not found")
-                        continue
-                
-                # Check size limits (apply to all content)
-                size_gb = item.get('size', 0) / (1024 * 1024 * 1024)
-                min_size = self.config.get('min_size_gb', 0)
-                max_size = self.config.get('max_size_gb', 100)
-                if size_gb > 0 and (size_gb < min_size or size_gb > max_size):
-                    logger.debug(f"Skipping {title} - size {size_gb:.1f}GB outside range {min_size}-{max_size}GB")
-                    continue
-                
-                # Check year filters (if available)
-                year = item.get('year', 0)
-                min_year = self.config.get('min_year')
-                max_year = self.config.get('max_year')
-                if min_year and year > 0 and year < min_year:
-                    logger.debug(f"Skipping {title} - year {year} before minimum {min_year}")
-                    continue
-                if max_year and year > 0 and year > max_year:
-                    logger.debug(f"Skipping {title} - year {year} after maximum {max_year}")
-                    continue
-                
-                # Check content type preferences
-                content_types = self.config.get('content_types', {})
-                content_type = item.get('type', 'movie')
-                
-                # Map content type to settings key
-                type_key = ''
-                if content_type == 'movie':
-                    type_key = 'movies'
-                elif content_type == 'tv_show':
-                    type_key = 'tv_shows'
-                elif content_type == 'documentary':
-                    type_key = 'documentaries'
-                
-                if type_key and not content_types.get(type_key, True):
-                    logger.debug(f"Skipping {title} - content type {content_type} disabled in settings")
-                    continue
-                
-                # Check genre exclusions
-                exclude_genres = self.config.get('exclude_genres', [])
-                if exclude_genres:
-                    genre_excluded = False
-                    for genre in exclude_genres:
-                        if genre.lower() in filename:
-                            logger.debug(f"Skipping {title} - contains excluded genre: {genre}")
-                            genre_excluded = True
-                            break
-                    if genre_excluded:
-                        continue
-                
-                # Check genre preferences (if specified)
-                preferred_genres = self.config.get('preferred_genres', [])
-                if preferred_genres:
-                    genre_found = False
-                    for genre in preferred_genres:
-                        if genre.lower() in filename:
-                            genre_found = True
-                            break
-                    if not genre_found:
-                        logger.debug(f"Skipping {title} - doesn't match any preferred genre")
-                        continue
-                
-                # If we get here, the content passed all filters
-                logger.debug(f"Content passed all filters: {title}")
-                filtered.append(item)
-                
-            except Exception as e:
-                logger.error(f"Error filtering content item {item.get('title', 'unknown')}: {str(e)}")
-                # Skip items that cause errors in filtering
-                continue
-        
-        logger.info(f"Filter complete: {len(filtered)} items passed filters")
-        return filtered
+        return ""
 
     async def add_content_to_debrid(self, new_content, existing_torrents):
         """Add content items to Real-Debrid"""
@@ -678,6 +529,74 @@ class HashListAutoAdd:
         except Exception as e:
             logger.error(f"Failed to send notification: {e}")
 
+    def filter_content(self, content_items):
+        """
+        Filter content based on user preferences and content type
+        """
+        self.logger.info(f"Filtering {len(content_items)} content items")
+        filtered_content = []
+        
+        for item in content_items:
+            # Get content type and other metadata
+            content_type = item.get('type', 'unknown')
+            hash_value = item.get('hash', '')
+            title = item.get('title', f"Content {hash_value[:8]}")
+            filenames = item.get('filenames', [])
+            
+            # Skip adult content
+            if content_type == "adult":
+                self.logger.info(f"Skipping adult content: {title}")
+                # Mark as processed to avoid rechecking in future runs
+                self.processed_hashes.add(hash_value)
+                continue
+                
+            # Skip content types not enabled in config
+            content_types_config = self.config.get('content_types', {})
+            if content_type == "movie" and not content_types_config.get('movies', True):
+                self.logger.debug(f"Skipping movie content (disabled in config): {title}")
+                continue
+                
+            if content_type == "tv" and not content_types_config.get('tv_shows', True):
+                self.logger.debug(f"Skipping TV content (disabled in config): {title}")
+                continue
+                
+            # Size filtering
+            size_bytes = item.get('size', 0)
+            size_gb = size_bytes / (1024**3)  # Convert to GB
+            
+            min_size_gb = self.config.get('min_size_gb', 0.5)
+            max_size_gb = self.config.get('max_size_gb', 50.0)
+            
+            if size_gb < min_size_gb:
+                self.logger.debug(f"Skipping content due to small size ({size_gb:.2f} GB): {title}")
+                continue
+                
+            if size_gb > max_size_gb:
+                self.logger.debug(f"Skipping content due to large size ({size_gb:.2f} GB): {title}")
+                continue
+            
+            # Keyword filtering
+            exclude_keywords = self.config.get('exclude_keywords', [])
+            include_keywords = self.config.get('include_keywords', [])
+            
+            # Convert filenames to lowercase for case-insensitive matching
+            filenames_lower = [name.lower() for name in filenames]
+            joined_names = ' '.join(filenames_lower)
+            
+            if any(keyword.lower() in joined_names for keyword in exclude_keywords):
+                self.logger.debug(f"Skipping content with excluded keyword: {title}")
+                continue
+                
+            # If include keywords defined, at least one must match
+            if include_keywords and not any(keyword.lower() in joined_names for keyword in include_keywords):
+                self.logger.debug(f"Skipping content without any include keywords: {title}")
+                continue
+            
+            # All filters passed
+            filtered_content.append(item)
+        
+        self.logger.info(f"Content filtering complete: {len(filtered_content)} of {len(content_items)} items passed filters")
+        return filtered_content
 async def main():
     """Main entry point"""
     # Ensure directories exist - use relative paths to project root
