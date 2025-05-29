@@ -152,6 +152,9 @@ class HashListAutoAdd:
         """Main automation loop with real DMM hashes"""
         logger.info("Starting DebridAuto automation with real DMM hashes")
         
+        # Always ensure the processed hashes file exists, even if empty
+        self.save_processed_hashes()
+        
         try:
             # Check Real-Debrid service status before proceeding
             logger.info("Checking Real-Debrid service status...")
@@ -170,6 +173,8 @@ class HashListAutoAdd:
                             "⚠️ DebridAuto Run Skipped",
                             f"Real-Debrid service is experiencing 503 errors and did not recover within 15 minutes.\nWill retry in next scheduled run."
                         )
+                        # Always save processed hashes file even when aborting
+                        self.save_processed_hashes()
                         return
                 elif service_status['status'] == 'auth_error':
                     logger.error("Authentication error - check your API key")
@@ -177,6 +182,8 @@ class HashListAutoAdd:
                         "❌ DebridAuto Authentication Error",
                         "Invalid API key or authentication failed. Please check your Real-Debrid API key."
                     )
+                    # Always save processed hashes file even with auth error
+                    self.save_processed_hashes()
                     return
                 elif service_status['status'] == 'rate_limited':
                     logger.warning("Rate limited, waiting 5 minutes before proceeding...")
@@ -190,6 +197,8 @@ class HashListAutoAdd:
             real_hashes = self.load_real_dmm_hashes()
             if not real_hashes:
                 logger.error("No real DMM hashes available. Run decode_dmm_hashes.py first.")
+                # Always save processed hashes file even when no hashes available
+                self.save_processed_hashes()
                 return
             
             logger.info(f"Using {len(real_hashes)} real torrent hashes from DMM")
@@ -209,6 +218,8 @@ class HashListAutoAdd:
             
             if not new_content:
                 logger.info("No new content to process")
+                # Always save processed hashes file even when no new content
+                self.save_processed_hashes()
                 return
             
             # Check for existing torrents in Real-Debrid
@@ -241,9 +252,13 @@ class HashListAutoAdd:
                 self.save_processed_hashes()
             else:
                 logger.info("No unique content to add")
+                # Always save processed hashes file even when no content to add
+                self.save_processed_hashes()
             
         except Exception as e:
             logger.error(f"Error in automation: {str(e)}")
+            # Always save processed hashes file even on error
+            self.save_processed_hashes()
             # Send error notification
             try:
                 await self.notifier.send_notification(
