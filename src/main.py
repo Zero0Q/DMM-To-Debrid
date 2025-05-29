@@ -22,7 +22,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('./logs/automation.log'),
+        logging.FileHandler('../logs/automation.log'),
         logging.StreamHandler()
     ]
 )
@@ -37,14 +37,14 @@ class HashListAutoAdd:
         self.logger = logging.getLogger(__name__)  # Add missing logger
         
         # Data storage
-        self.data_dir = Path('data')
+        self.data_dir = Path('../data')
         self.data_dir.mkdir(exist_ok=True)
         self.processed_file = self.data_dir / 'processed_hashes.json'
         self.processed_hashes = self.load_processed_hashes()
         
     def load_config(self) -> Dict:
         """Load configuration from config file"""
-        config_file = Path('config/settings.yml')
+        config_file = Path('../config/settings.yml')
         if config_file.exists():
             import yaml
             with open(config_file) as f:
@@ -133,7 +133,7 @@ class HashListAutoAdd:
         """Load real torrent hashes from the extracted DMM data"""
         try:
             # Try to load from the real_dmm_hashes.json file
-            hash_file = Path('real_dmm_hashes.json')
+            hash_file = Path('../real_dmm_hashes.json')
             if hash_file.exists():
                 with open(hash_file) as f:
                     data = json.load(f)
@@ -463,9 +463,9 @@ class HashListAutoAdd:
 
 async def main():
     """Main entry point"""
-    # Ensure directories exist
-    Path('logs').mkdir(exist_ok=True)
-    Path('data').mkdir(exist_ok=True)
+    # Ensure directories exist - use relative paths to project root
+    Path('../logs').mkdir(exist_ok=True)
+    Path('../data').mkdir(exist_ok=True)
     
     # Initialize and run auto-add with proper session management
     async with HashListAutoAdd() as auto_add:
