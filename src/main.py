@@ -366,99 +366,99 @@ class HashListAutoAdd:
                 filename = item.get('filename', '').lower()
                 hash_str = item.get('hash', '').lower()
                 
-                # For real hashes, we need to infer quality/codec from hash or use defaults
-                # Since we don't have actual filenames, we'll be more permissive but still apply filters
+                # For cached content with generic filenames, be more permissive
+                is_cached_content = filename.startswith('cached_content_')
                 
-                # Check exclude keywords
-                exclude_keywords = self.config.get('exclude_keywords', [])
-                exclude_found = False
-                for keyword in exclude_keywords:
-                    if keyword.lower() in filename:
-                        logger.debug(f"Skipping {title} - contains excluded keyword: {keyword}")
-                        exclude_found = True
-                        break
-                if exclude_found:
-                    continue
-                
-                # Check include keywords (if specified)
-                include_keywords = self.config.get('include_keywords', [])
-                if include_keywords:
-                    include_found = False
-                    for keyword in include_keywords:
+                # Check exclude keywords (only if filename is descriptive)
+                if not is_cached_content:
+                    exclude_keywords = self.config.get('exclude_keywords', [])
+                    exclude_found = False
+                    for keyword in exclude_keywords:
                         if keyword.lower() in filename:
-                            include_found = True
+                            logger.debug(f"Skipping {title} - contains excluded keyword: {keyword}")
+                            exclude_found = True
                             break
-                    if not include_found:
-                        logger.debug(f"Skipping {title} - doesn't contain required keywords")
+                    if exclude_found:
                         continue
                 
-                # Check quality preferences (if we can detect them)
-                quality_preferences = self.config.get('quality_preferences', [])
-                if quality_preferences:
-                    quality_found = False
-                    for quality in quality_preferences:
-                        if quality.lower() in filename:
-                            quality_found = True
-                            break
-                    # If we can't detect quality, skip unless it's a very small list
-                    if not quality_found and '1080p' not in filename and '720p' not in filename and '2160p' not in filename:
-                        # For cached content without clear quality indicators, be permissive
-                        # but log that we couldn't determine quality
-                        logger.debug(f"Could not determine quality for {title}, allowing through")
-                
-                # Check codec preferences (if we can detect them)
-                codec_preferences = self.config.get('codec_preferences', [])
-                if codec_preferences:
-                    codec_found = False
-                    for codec in codec_preferences:
-                        if codec.lower() in filename:
-                            codec_found = True
-                            break
-                    # If codec preferences are set but we can't detect codec, be selective
-                    if not codec_found and any(codec.lower() in filename for codec in ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1']):
-                        logger.debug(f"Skipping {title} - codec not in preferences")
-                        continue
-                
-                # Check HDR preferences
-                hdr_preferences = self.config.get('hdr_preferences', [])
-                if hdr_preferences:
-                    # Check if content matches HDR preferences
-                    hdr_found = False
-                    for hdr_format in hdr_preferences:
-                        if hdr_format.lower() in filename:
-                            hdr_found = True
-                            break
-                    
-                    # Special handling for "sdr" preference - exclude HDR content
-                    if 'sdr' in hdr_preferences:
-                        hdr_indicators = ['hdr', 'hdr10', 'dolby', 'vision', 'dv', 'hlg']
-                        has_hdr = any(indicator in filename for indicator in hdr_indicators)
-                        if has_hdr:
-                            logger.debug(f"Skipping {title} - contains HDR but SDR preferred")
+                # Check include keywords (only if filename is descriptive and keywords are specified)
+                if not is_cached_content:
+                    include_keywords = self.config.get('include_keywords', [])
+                    if include_keywords:
+                        include_found = False
+                        for keyword in include_keywords:
+                            if keyword.lower() in filename:
+                                include_found = True
+                                break
+                        if not include_found:
+                            logger.debug(f"Skipping {title} - doesn't contain required keywords")
                             continue
-                    elif not hdr_found:
-                        # If specific HDR formats are required but not found, skip
-                        logger.debug(f"Skipping {title} - HDR format not in preferences")
-                        continue
                 
-                # Check language preferences
-                languages = self.config.get('languages', [])
-                if languages:
-                    # Check if content is in preferred language
-                    lang_found = False
-                    for lang in languages:
-                        if lang.lower() in filename:
-                            lang_found = True
-                            break
-                    # For cached content, be permissive if we can't detect language clearly
-                    # but exclude obvious foreign language indicators
-                    foreign_indicators = ['korean', 'chinese', 'spanish', 'french', 'german', 'italian', 'japanese', 'russian']
-                    has_foreign = any(indicator in filename for indicator in foreign_indicators)
-                    if has_foreign and not lang_found:
-                        logger.debug(f"Skipping {title} - foreign language detected")
-                        continue
+                # For cached content, skip quality/codec/language checks since filenames are generic
+                if not is_cached_content:
+                    # Check quality preferences (if we can detect them)
+                    quality_preferences = self.config.get('quality_preferences', [])
+                    if quality_preferences:
+                        quality_found = False
+                        for quality in quality_preferences:
+                            if quality.lower() in filename:
+                                quality_found = True
+                                break
+                        if not quality_found and any(q in filename for q in ['1080p', '720p', '2160p', '480p']):
+                            logger.debug(f"Skipping {title} - quality not in preferences")
+                            continue
+                    
+                    # Check codec preferences (if we can detect them)
+                    codec_preferences = self.config.get('codec_preferences', [])
+                    if codec_preferences:
+                        codec_found = False
+                        for codec in codec_preferences:
+                            if codec.lower() in filename:
+                                codec_found = True
+                                break
+                        if not codec_found and any(codec.lower() in filename for codec in ['x264', 'x265', 'h264', 'h265', 'hevc', 'av1']):
+                            logger.debug(f"Skipping {title} - codec not in preferences")
+                            continue
+                    
+                    # Check HDR preferences
+                    hdr_preferences = self.config.get('hdr_preferences', [])
+                    if hdr_preferences:
+                        # Check if content matches HDR preferences
+                        hdr_found = False
+                        for hdr_format in hdr_preferences:
+                            if hdr_format.lower() in filename:
+                                hdr_found = True
+                                break
+                        
+                        # Special handling for "sdr" preference - exclude HDR content
+                        if 'sdr' in hdr_preferences:
+                            hdr_indicators = ['hdr', 'hdr10', 'dolby', 'vision', 'dv', 'hlg']
+                            has_hdr = any(indicator in filename for indicator in hdr_indicators)
+                            if has_hdr:
+                                logger.debug(f"Skipping {title} - contains HDR but SDR preferred")
+                                continue
+                        elif not hdr_found:
+                            # If specific HDR formats are required but not found, skip
+                            logger.debug(f"Skipping {title} - HDR format not in preferences")
+                            continue
+                    
+                    # Check language preferences
+                    languages = self.config.get('languages', [])
+                    if languages:
+                        # Check if content is in preferred language
+                        lang_found = False
+                        for lang in languages:
+                            if lang.lower() in filename:
+                                lang_found = True
+                                break
+                        # Exclude obvious foreign language indicators
+                        foreign_indicators = ['korean', 'chinese', 'spanish', 'french', 'german', 'italian', 'japanese', 'russian']
+                        has_foreign = any(indicator in filename for indicator in foreign_indicators)
+                        if has_foreign and not lang_found:
+                            logger.debug(f"Skipping {title} - foreign language detected")
+                            continue
                 
-                # Check size limits
+                # Check size limits (apply to all content)
                 size_gb = item.get('size', 0) / (1024 * 1024 * 1024)
                 min_size = self.config.get('min_size_gb', 0)
                 max_size = self.config.get('max_size_gb', 100)
@@ -485,17 +485,18 @@ class HashListAutoAdd:
                     logger.debug(f"Skipping {title} - content type {content_type} disabled")
                     continue
                 
-                # Check genre preferences (if available)
-                exclude_genres = self.config.get('exclude_genres', [])
-                if exclude_genres:
-                    genre_excluded = False
-                    for genre in exclude_genres:
-                        if genre.lower() in filename:
-                            logger.debug(f"Skipping {title} - contains excluded genre: {genre}")
-                            genre_excluded = True
-                            break
-                    if genre_excluded:
-                        continue
+                # Check genre preferences (only if filename is descriptive)
+                if not is_cached_content:
+                    exclude_genres = self.config.get('exclude_genres', [])
+                    if exclude_genres:
+                        genre_excluded = False
+                        for genre in exclude_genres:
+                            if genre.lower() in filename:
+                                logger.debug(f"Skipping {title} - contains excluded genre: {genre}")
+                                genre_excluded = True
+                                break
+                        if genre_excluded:
+                            continue
                 
                 # If we get here, the content passed all filters
                 logger.debug(f"Content passed all filters: {title} ({size_gb:.1f}GB)")
