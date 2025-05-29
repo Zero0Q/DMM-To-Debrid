@@ -14,8 +14,8 @@ dmm:
 # Content Preferences - Uncomment desired qualities
 quality_preferences:
   - "2160p"  # 4K - highest priority
-  - "1080p"  # Full HD
-  - "720p"   # HD (only if above not available)
+  # - "1080p"  # Full HD
+  # - "720p"   # HD (only if above not available)
   # - "480p"   # SD quality
   # - "360p"   # Low quality
 
@@ -115,7 +115,7 @@ max_size_gb: 50.0  # Maximum file size (adjust based on your storage)
 
 # Processing Limits
 max_items_per_run: 300      # Don't add too many at once
-hash_list_limit: 150        # Number of hash lists to process per run
+hash_list_limit: 5000        # Number of hash lists to process per run
 check_interval: 6          # Hours between runs
 
 # Genre Preferences (optional - filter by genre keywords in filename)
