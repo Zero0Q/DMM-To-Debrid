@@ -48,7 +48,6 @@ logs/*.log
 *.log
 
 # Data and temporary files
-data/processed_hashes.json
 data/cache/
 temp/
 tmp/
